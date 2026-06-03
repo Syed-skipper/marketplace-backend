@@ -12,11 +12,13 @@ import shippingRoutes from '../../modules/shipping/routes/shipping.routes';
 import reviewRoutes from '../../modules/reviews/routes/review.routes';
 import notificationRoutes from '../../modules/notifications/routes/notification.routes';
 import adminRoutes from '../../modules/admin/routes/admin.routes';
+import userRoutes from '../../modules/users/routes/user.routes';
 import searchRoutes from '../../modules/products/routes/search.routes';
 
 const router = Router();
 
 router.use('/auth', authRoutes);
+router.use('/users', userRoutes);
 router.use('/products/search', searchRoutes);
 router.use('/products', productRoutes);
 router.use('/categories', categoryRoutes);
