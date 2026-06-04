@@ -2,7 +2,17 @@ import { prisma } from '../../../config/database/prisma.client';
 
 export class WishlistService {
   private includeProducts = {
-    items: { include: { product: { include: { images: { take: 1 } } } } },
+    items: {
+      include: {
+        product: {
+          include: {
+            images: { orderBy: { sortOrder: 'asc' }, take: 1 },
+            variants: { include: { inventory: true } },
+            seller: { select: { id: true, businessName: true, status: true } },
+          },
+        },
+      },
+    },
   } as const;
 
   async getOrCreate(userId: string, name = 'Default') {

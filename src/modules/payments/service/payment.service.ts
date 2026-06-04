@@ -58,10 +58,24 @@ export class PaymentService {
     }
 
     if (provider === 'RAZORPAY' && this.razorpay) {
+      const existing = await prisma.payment.findFirst({
+        where: { orderId, provider: 'RAZORPAY', status: 'PENDING' },
+      });
+      if (existing?.transactionId) {
+        return {
+          payment: existing,
+          razorpayOrderId: existing.transactionId,
+          keyId: env.RAZORPAY_KEY_ID,
+          amount: Math.round(amount * 100),
+          currency: 'INR',
+        };
+      }
+
       const razorpayOrder = await this.razorpay.orders.create({
         amount: Math.round(amount * 100),
         currency: 'INR',
         receipt: order.orderNumber,
+        notes: { orderId, orderNumber: order.orderNumber },
       });
 
       const payment = await prisma.payment.create({
@@ -71,11 +85,22 @@ export class PaymentService {
           transactionId: razorpayOrder.id,
           status: 'PENDING',
           amount,
-          metadata: razorpayOrder as object,
+          metadata: {
+            razorpay_order_id: razorpayOrder.id,
+            amount: razorpayOrder.amount,
+            currency: razorpayOrder.currency,
+            receipt: razorpayOrder.receipt,
+          },
         },
       });
 
-      return { payment, razorpayOrderId: razorpayOrder.id };
+      return {
+        payment,
+        razorpayOrderId: razorpayOrder.id,
+        keyId: env.RAZORPAY_KEY_ID,
+        amount: razorpayOrder.amount,
+        currency: razorpayOrder.currency,
+      };
     }
 
     throw new InfrastructureError('Payment provider not configured');
@@ -95,6 +120,97 @@ export class PaymentService {
       const intent = event.data.object as Stripe.PaymentIntent;
       await this.markPaymentFailed(intent.metadata.orderId, intent.id);
     }
+  }
+
+  async verifyRazorpayCheckout(
+    userId: string,
+    input: {
+      orderId: string;
+      razorpayOrderId: string;
+      razorpayPaymentId: string;
+      razorpaySignature: string;
+    },
+  ) {
+    if (!env.RAZORPAY_KEY_SECRET) {
+      throw new InfrastructureError('Razorpay not configured');
+    }
+
+    const order = await prisma.order.findUnique({ where: { id: input.orderId } });
+    if (!order || order.userId !== userId) throw new NotFoundError('Order not found');
+
+    if (order.status === 'PAID') {
+      const payment = await prisma.payment.findFirst({
+        where: { orderId: input.orderId, provider: 'RAZORPAY', status: 'SUCCESS' },
+      });
+      return { order, payment, alreadyPaid: true };
+    }
+
+    if (order.status !== 'PAYMENT_PENDING') {
+      throw new DomainError('Order is not awaiting payment');
+    }
+
+    const expectedSignature = crypto
+      .createHmac('sha256', env.RAZORPAY_KEY_SECRET)
+      .update(`${input.razorpayOrderId}|${input.razorpayPaymentId}`)
+      .digest('hex');
+
+    if (expectedSignature !== input.razorpaySignature) {
+      throw new DomainError('Invalid payment signature');
+    }
+
+    const payment = await prisma.payment.findFirst({
+      where: {
+        orderId: input.orderId,
+        provider: 'RAZORPAY',
+        transactionId: input.razorpayOrderId,
+      },
+    });
+    if (!payment) throw new NotFoundError('Payment record not found');
+
+    await prisma.payment.update({
+      where: { id: payment.id },
+      data: {
+        status: 'SUCCESS',
+        transactionId: input.razorpayPaymentId,
+        metadata: {
+          ...(typeof payment.metadata === 'object' && payment.metadata !== null
+            ? (payment.metadata as Record<string, unknown>)
+            : {}),
+          razorpay_order_id: input.razorpayOrderId,
+          razorpay_payment_id: input.razorpayPaymentId,
+          razorpay_signature: input.razorpaySignature,
+          verifiedAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    const updatedOrder = await this.orderService.transitionStatus(input.orderId, 'PAID');
+    paymentLogger.info('Razorpay payment verified', {
+      orderId: input.orderId,
+      razorpayPaymentId: input.razorpayPaymentId,
+    });
+
+    await eventBus.publish({
+      type: DomainEventType.PAYMENT_SUCCESS,
+      payload: {
+        orderId: input.orderId,
+        transactionId: input.razorpayPaymentId,
+      },
+      occurredAt: new Date(),
+    });
+
+    return {
+      order: updatedOrder,
+      payment: await prisma.payment.findUnique({ where: { id: payment.id } }),
+      alreadyPaid: false,
+    };
+  }
+
+  getRazorpayPublicConfig() {
+    if (!env.RAZORPAY_KEY_ID) {
+      throw new InfrastructureError('Razorpay not configured');
+    }
+    return { keyId: env.RAZORPAY_KEY_ID };
   }
 
   async handleRazorpayWebhook(body: Record<string, unknown>, signature: string) {

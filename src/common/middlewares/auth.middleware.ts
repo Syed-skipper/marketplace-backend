@@ -19,7 +19,12 @@ declare global {
   }
 }
 
-export function authenticate(req: Request, _res: Response, next: NextFunction): void {
+/** Verifies JWT and loads current roles/permissions from DB (not stale JWT claims). */
+export async function authenticate(
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): Promise<void> {
   const authHeader = req.headers.authorization;
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : req.cookies?.accessToken;
 
@@ -30,10 +35,16 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
 
   try {
     const payload = jwt.verify(token, env.JWT_ACCESS_SECRET) as JwtPayload;
-    req.user = payload;
+    const { roles, permissions } = await loadUserPermissions(payload.sub);
+    req.user = {
+      sub: payload.sub,
+      email: payload.email,
+      roles,
+      permissions,
+    };
     next();
-  } catch {
-    next(new AuthenticationError('Invalid or expired token'));
+  } catch (err) {
+    next(err instanceof AuthenticationError ? err : new AuthenticationError('Invalid or expired token'));
   }
 }
 

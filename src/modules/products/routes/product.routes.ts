@@ -15,6 +15,7 @@ const router = Router();
 const controller = new ProductController();
 
 router.get('/', optionalAuthenticate, validate(listProductsSchema, 'query'), asyncHandler(controller.list));
+router.get('/filter-options', optionalAuthenticate, asyncHandler(controller.filterOptions));
 router.get('/:id', optionalAuthenticate, asyncHandler(controller.getById));
 router.post(
   '/',

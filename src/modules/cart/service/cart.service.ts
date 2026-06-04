@@ -11,7 +11,17 @@ export class CartService {
       include: {
         items: {
           include: {
-            variant: { include: { product: true, inventory: true } },
+            variant: {
+              include: {
+                inventory: true,
+                product: {
+                  include: {
+                    images: { orderBy: { sortOrder: 'asc' }, take: 1 },
+                    seller: { select: { businessName: true } },
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -22,7 +32,17 @@ export class CartService {
         include: {
           items: {
             include: {
-              variant: { include: { product: true, inventory: true } },
+              variant: {
+                include: {
+                  inventory: true,
+                  product: {
+                    include: {
+                      images: { orderBy: { sortOrder: 'asc' }, take: 1 },
+                      seller: { select: { businessName: true } },
+                    },
+                  },
+                },
+              },
             },
           },
         },
@@ -46,7 +66,8 @@ export class CartService {
     const existing = cart.items.find((i) => i.variantId === variantId);
     const newQty = (existing?.quantity ?? 0) + quantity;
 
-    if (variant.inventory.availableStock < quantity) {
+    const freshInv = await prisma.inventory.findUnique({ where: { variantId } });
+    if (!freshInv || freshInv.availableStock < quantity) {
       throw new DomainError('Insufficient stock');
     }
 

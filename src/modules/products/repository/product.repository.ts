@@ -9,6 +9,7 @@ export interface ProductListFilters {
   brand?: string;
   minPrice?: number;
   maxPrice?: number;
+  inStock?: boolean;
   skip: number;
   take: number;
   sortBy?: string;
@@ -32,10 +33,35 @@ export class ProductRepository {
       ];
     }
 
+    const variantConditions: Prisma.ProductVariantWhereInput[] = [];
+    if (filters.inStock === true) {
+      variantConditions.push({ inventory: { availableStock: { gt: 0 } } });
+    }
+    if (filters.minPrice != null) {
+      variantConditions.push({
+        OR: [
+          { discountPrice: { gte: filters.minPrice } },
+          { discountPrice: null, price: { gte: filters.minPrice } },
+        ],
+      });
+    }
+    if (filters.maxPrice != null) {
+      variantConditions.push({
+        OR: [
+          { discountPrice: { lte: filters.maxPrice } },
+          { discountPrice: null, price: { lte: filters.maxPrice } },
+        ],
+      });
+    }
+    if (variantConditions.length > 0) {
+      where.variants = { some: { AND: variantConditions } };
+    }
+
     const orderBy: Prisma.ProductOrderByWithRelationInput = {};
     if (filters.sortBy === 'name') orderBy.name = filters.sortOrder ?? 'asc';
-    else if (filters.sortBy === 'price') orderBy.createdAt = filters.sortOrder ?? 'desc';
-    else orderBy.createdAt = filters.sortOrder ?? 'desc';
+    else if (filters.sortBy === 'price') {
+      orderBy.variants = { _min: { price: filters.sortOrder ?? 'asc' } };
+    } else orderBy.createdAt = filters.sortOrder ?? 'desc';
 
     const [items, total] = await Promise.all([
       prisma.product.findMany({

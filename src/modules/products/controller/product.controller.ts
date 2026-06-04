@@ -11,6 +11,11 @@ export class ProductController {
     sendSuccess(res, result.items, 'Success', 200, result.meta);
   };
 
+  filterOptions = async (_req: Request, res: Response): Promise<void> => {
+    const options = await this.service.getFilterOptions();
+    sendSuccess(res, options);
+  };
+
   getById = async (req: Request, res: Response): Promise<void> => {
     const product = await this.service.getById(req.params.id);
     sendSuccess(res, product);
@@ -47,7 +52,13 @@ export class ProductController {
 
   updateStatus = async (req: Request, res: Response): Promise<void> => {
     const isAdmin = req.user!.roles.includes('admin');
-    const product = await this.service.updateStatus(req.params.id, req.body.status, isAdmin);
+    const seller = await prisma.seller.findUnique({ where: { userId: req.user!.sub } });
+    const product = await this.service.updateStatus(
+      req.params.id,
+      req.body.status,
+      seller?.id ?? null,
+      isAdmin,
+    );
     sendSuccess(res, product, 'Status updated');
   };
 }

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { OrderService } from '../service/order.service';
+import { SellerOrdersService } from '../../sellers/service/seller-orders.service';
 import { asyncHandler } from '../../../common/utils/async-handler';
 import { sendSuccess } from '../../../common/utils/response.util';
 import { authenticate, hasPermission } from '../../../common/middlewares/auth.middleware';
@@ -8,6 +9,7 @@ import { prisma } from '../../../config/database/prisma.client';
 
 const router = Router();
 const service = new OrderService();
+const sellerOrdersService = new SellerOrdersService();
 
 router.use(authenticate);
 
@@ -27,7 +29,7 @@ router.get('/seller', hasPermission(PERMISSIONS.ORDER_VIEW), asyncHandler(async 
     res.status(403).json({ success: false, message: 'Seller profile required' });
     return;
   }
-  const result = await service.listForSeller(seller.id, req.query);
+  const result = await sellerOrdersService.list(seller.id, req.query);
   sendSuccess(res, result.items, 'Success', 200, result.meta);
 }));
 

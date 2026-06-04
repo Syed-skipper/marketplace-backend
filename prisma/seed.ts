@@ -33,7 +33,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
   ],
   customer: [
     'product:view', 'order:create', 'order:view', 'order:cancel',
-    'cart:manage', 'wishlist:manage', 'review:create', 'seller:create',
+    'payment:process', 'cart:manage', 'wishlist:manage', 'review:create', 'seller:create',
   ],
 };
 
@@ -325,13 +325,33 @@ async function seedCustomerData(
     create: { userId: customerUserId },
   });
 
-  const cartVariants = [variantBySlug['wireless-noise-cancelling-headphones'], variantBySlug['organic-cotton-tshirt']];
-  for (const variantId of cartVariants) {
+  const cartLines: Array<{ variantSlug: string; quantity: number }> = [
+    { variantSlug: 'wireless-noise-cancelling-headphones', quantity: 1 },
+    { variantSlug: 'organic-cotton-tshirt', quantity: 2 },
+    { variantSlug: 'smart-air-purifier', quantity: 1 },
+    { variantSlug: 'ergonomic-office-chair', quantity: 1 },
+  ];
+
+  for (const line of cartLines) {
+    const variantId = variantBySlug[line.variantSlug];
+    if (!variantId) continue;
+
     await prisma.cartItem.upsert({
       where: { cartId_variantId: { cartId: cart.id, variantId } },
-      update: { quantity: 1 },
-      create: { cartId: cart.id, variantId, quantity: 1 },
+      update: { quantity: line.quantity },
+      create: { cartId: cart.id, variantId, quantity: line.quantity },
     });
+
+    const inv = await prisma.inventory.findUnique({ where: { variantId } });
+    if (inv && inv.availableStock >= line.quantity) {
+      await prisma.inventory.update({
+        where: { variantId },
+        data: {
+          availableStock: { decrement: line.quantity },
+          reservedStock: { increment: line.quantity },
+        },
+      });
+    }
   }
 
   let wishlist = await prisma.wishlist.findFirst({ where: { userId: customerUserId } });
@@ -375,6 +395,8 @@ async function seedOrders(customerUserId: string, sellerId: string, variantBySlu
     { number: 'ORD-SEED-1001', status: 'DELIVERED', variantSlug: 'minimalist-titanium-watch', qty: 1 },
     { number: 'ORD-SEED-1002', status: 'SHIPPED', variantSlug: 'ergonomic-office-chair', qty: 1, tracking: 'TRK-SEED-88421' },
     { number: 'ORD-SEED-1003', status: 'PROCESSING', variantSlug: 'smart-air-purifier', qty: 1 },
+    { number: 'ORD-SEED-1004', status: 'PAID', variantSlug: 'wireless-noise-cancelling-headphones', qty: 2 },
+    { number: 'ORD-SEED-1005', status: 'PAYMENT_PENDING', variantSlug: 'organic-cotton-tshirt', qty: 1 },
   ];
 
   for (const o of orders) {

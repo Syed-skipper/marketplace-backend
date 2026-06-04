@@ -275,9 +275,11 @@ model Product {
   categoryId  String        @map("category_id") @db.Uuid
   name        String        @db.VarChar(255)
   slug        String        @unique @db.VarChar(255)
-  description String?       @db.Text
-  status      ProductStatus @default(DRAFT)
-  brand       String?       @db.VarChar(100)
+  description       String?  @db.Text
+  metaTitle         String?  @map("meta_title") @db.VarChar(70)
+  metaDescription   String?  @map("meta_description") @db.VarChar(320)
+  status            ProductStatus @default(DRAFT)
+  brand             String?  @db.VarChar(100)
   searchVector Unsupported("tsvector")? @map("search_vector")
   avgRating   Decimal       @default(0) @map("avg_rating") @db.Decimal(3, 2)
   reviewCount Int           @default(0) @map("review_count")

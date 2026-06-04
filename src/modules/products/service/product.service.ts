@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { ProductRepository } from '../repository/product.repository';
 import { NotFoundError, AuthorizationError } from '../../../common/exceptions/errors';
 import { generateSlug, appendUniqueSuffix } from '../../../common/utils/slug.util';
+import { persistProductImages } from '../../../common/utils/product-image.util';
 import { eventBus } from '../../../common/events/event-bus';
 import { DomainEventType } from '../../../common/events/domain-events';
 import { parsePagination, PaginatedResult } from '../../../common/types/pagination.types';
@@ -11,14 +12,30 @@ import { ProductStatus } from '@prisma/client';
 export class ProductService {
   constructor(private readonly repo = new ProductRepository()) {}
 
+  async getFilterOptions() {
+    const rows = await prisma.product.findMany({
+      where: { status: 'ACTIVE', brand: { not: null } },
+      distinct: ['brand'],
+      select: { brand: true },
+      orderBy: { brand: 'asc' },
+    });
+    return {
+      brands: rows.map((r) => r.brand).filter((b): b is string => Boolean(b?.trim())),
+    };
+  }
+
   async list(query: Record<string, unknown>) {
     const { page, limit, skip, sortOrder, sortBy } = parsePagination(query as { page?: number; limit?: number });
+    const inStock = query.inStock as boolean | undefined;
     const { items, total } = await this.repo.findMany({
       sellerId: query.sellerId as string | undefined,
       categoryId: query.categoryId as string | undefined,
       status: (query.status as ProductStatus) ?? 'ACTIVE',
       search: query.search as string | undefined,
       brand: query.brand as string | undefined,
+      minPrice: query.minPrice != null ? Number(query.minPrice) : undefined,
+      maxPrice: query.maxPrice != null ? Number(query.maxPrice) : undefined,
+      inStock: inStock === undefined ? true : inStock,
       skip,
       take: limit,
       sortBy: sortBy as string | undefined,
@@ -52,6 +69,9 @@ export class ProductService {
       name: string;
       description?: string;
       brand?: string;
+      slug?: string;
+      metaTitle?: string;
+      metaDescription?: string;
       images?: { imageUrl: string; sortOrder?: number }[];
       variants: {
         sku: string;
@@ -63,9 +83,11 @@ export class ProductService {
       }[];
     },
   ) {
-    let slug = generateSlug(data.name);
+    let slug = data.slug ? generateSlug(data.slug) : generateSlug(data.name);
     const existing = await this.repo.slugExists(slug);
     if (existing) slug = appendUniqueSuffix(slug, crypto.randomUUID());
+
+    const images = await persistProductImages(data.images);
 
     const product = await prisma.$transaction(async (tx) => {
       const created = await tx.product.create({
@@ -75,10 +97,12 @@ export class ProductService {
           name: data.name,
           slug,
           description: data.description,
+          metaTitle: data.metaTitle,
+          metaDescription: data.metaDescription,
           brand: data.brand,
           status: 'DRAFT',
-          images: data.images
-            ? { create: data.images.map((img, i) => ({ imageUrl: img.imageUrl, sortOrder: img.sortOrder ?? i })) }
+          images: images
+            ? { create: images.map((img, i) => ({ imageUrl: img.imageUrl, sortOrder: img.sortOrder ?? i })) }
             : undefined,
           variants: {
             create: data.variants.map((v) => ({
@@ -145,12 +169,27 @@ export class ProductService {
     await this.repo.delete(id);
   }
 
-  async updateStatus(id: string, status: ProductStatus, isAdmin: boolean) {
-    if (!isAdmin && status !== 'DRAFT' && status !== 'INACTIVE') {
-      throw new AuthorizationError('Sellers can only set DRAFT or INACTIVE');
-    }
+  async updateStatus(
+    id: string,
+    status: ProductStatus,
+    sellerId: string | null,
+    isAdmin: boolean,
+  ) {
     const product = await this.repo.findById(id);
     if (!product) throw new NotFoundError('Product not found');
+
+    if (!isAdmin) {
+      if (!sellerId || product.sellerId !== sellerId) {
+        throw new AuthorizationError('Not authorized to update this product status');
+      }
+      if (status === 'REJECTED') {
+        throw new AuthorizationError('Sellers cannot set REJECTED status');
+      }
+      if (!['DRAFT', 'INACTIVE', 'ACTIVE'].includes(status)) {
+        throw new AuthorizationError('Invalid status for seller');
+      }
+    }
+
     return this.repo.updateStatus(id, status);
   }
 }

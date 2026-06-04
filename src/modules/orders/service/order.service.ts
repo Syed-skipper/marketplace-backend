@@ -45,6 +45,10 @@ export class OrderService {
     const shippingFee = 50;
     const totalAmount = subtotal + tax + shippingFee;
 
+    for (const item of cart.items) {
+      await this.inventory.releaseStock(item.variantId, item.quantity, `cart-${cart.id}`);
+    }
+
     const order = await prisma.$transaction(async (tx) => {
       const created = await tx.order.create({
         data: {
