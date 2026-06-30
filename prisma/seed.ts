@@ -14,6 +14,7 @@ import {
 } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import { seedBulkCatalogProducts } from './seed-catalog';
+import { seedWallet } from './seed-wallet';
 
 const prisma = new PrismaClient();
 
@@ -637,6 +638,7 @@ async function main() {
     users.adminUser.id,
   ]);
   await seedAuditLogs(users.adminUser.id);
+  await seedWallet(prisma, users.customerUser.id);
 
   console.log('\nSeed completed.\n');
   console.log('--- Demo accounts ---');
