@@ -24,17 +24,38 @@ export class ProductService {
     };
   }
 
+  private async resolveCategoryIds(categoryId?: string): Promise<string[] | undefined> {
+    if (!categoryId) return undefined;
+
+    const rows = await prisma.category.findMany({
+      where: {
+        OR: [
+          { id: categoryId },
+          { parentId: categoryId },
+          { parent: { parentId: categoryId } },
+        ],
+      },
+      select: { id: true },
+    });
+
+    return rows.map((row) => row.id);
+  }
+
   async list(query: Record<string, unknown>) {
     const { page, limit, skip, sortOrder, sortBy } = parsePagination(query as { page?: number; limit?: number });
     const inStock = query.inStock as boolean | undefined;
+    const onSale = query.onSale as boolean | undefined;
+    const categoryIds = await this.resolveCategoryIds(query.categoryId as string | undefined);
     const { items, total } = await this.repo.findMany({
       sellerId: query.sellerId as string | undefined,
-      categoryId: query.categoryId as string | undefined,
+      categoryIds,
       status: (query.status as ProductStatus) ?? 'ACTIVE',
       search: query.search as string | undefined,
       brand: query.brand as string | undefined,
       minPrice: query.minPrice != null ? Number(query.minPrice) : undefined,
       maxPrice: query.maxPrice != null ? Number(query.maxPrice) : undefined,
+      minRating: query.minRating != null ? Number(query.minRating) : undefined,
+      onSale,
       inStock: inStock === undefined ? true : inStock,
       skip,
       take: limit,

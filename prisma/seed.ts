@@ -13,6 +13,7 @@ import {
   ShipmentStatus,
 } from '@prisma/client';
 import bcrypt from 'bcrypt';
+import { seedBulkCatalogProducts } from './seed-catalog';
 
 const prisma = new PrismaClient();
 
@@ -621,6 +622,7 @@ async function main() {
     users.pendingSellerUser.id,
     categoryBySlug,
   );
+  const { bulkCount } = await seedBulkCatalogProducts(prisma, seller.id, categoryBySlug);
   await seedCustomerData(users.customerUser.id, users.customer2.id, variantBySlug, productIds);
   await seedOrders(users.customerUser.id, seller.id, variantBySlug);
   await seedDashboardHistory(
@@ -642,7 +644,7 @@ async function main() {
   console.log(`Customer: ${users.customerEmail} / ${users.customerPassword}`);
   console.log(`Seller:   ${users.sellerEmail} / ${users.sellerPassword}`);
   console.log(`Pending:  pending.seller@marketplace.local / Seller@123456`);
-  console.log(`Products: ${productIds.length} (6 active, 1 draft, 1 rejected)`);
+  console.log(`Products: ${productIds.length} showcase + ${bulkCount} catalog (100 per category)`);
 }
 
 main()

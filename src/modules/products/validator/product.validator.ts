@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const listProductsSchema = z.object({
   page: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().positive().max(100).optional(),
-  sortBy: z.enum(['name', 'price', 'createdAt']).optional(),
+  sortBy: z.enum(['name', 'price', 'createdAt', 'avgRating', 'reviewCount']).optional(),
   sortOrder: z.enum(['asc', 'desc']).optional(),
   sellerId: z.string().uuid().optional(),
   categoryId: z.string().uuid().optional(),
@@ -13,6 +13,11 @@ export const listProductsSchema = z.object({
   minPrice: z.coerce.number().min(0).optional(),
   maxPrice: z.coerce.number().min(0).optional(),
   inStock: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === 'true')),
+  minRating: z.coerce.number().min(0).max(5).optional(),
+  onSale: z
     .enum(['true', 'false'])
     .optional()
     .transform((v) => (v === undefined ? undefined : v === 'true')),
