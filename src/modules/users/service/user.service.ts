@@ -1,6 +1,7 @@
 import { AddressType, Prisma } from '@prisma/client';
 import { prisma } from '../../../config/database/prisma.client';
-import { NotFoundError } from '../../../common/exceptions/errors';
+import { DomainError, NotFoundError } from '../../../common/exceptions/errors';
+import { reverseGeocodeCoordinates } from './geocoding.service';
 
 type AddressInput = {
   type: AddressType;
@@ -135,6 +136,15 @@ export class UserService {
         where: { id: remaining[0].id },
         data: { isDefault: true },
       });
+    }
+  }
+
+  async reverseGeocode(latitude: number, longitude: number) {
+    try {
+      return await reverseGeocodeCoordinates(latitude, longitude);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not resolve address';
+      throw new DomainError(message);
     }
   }
 }

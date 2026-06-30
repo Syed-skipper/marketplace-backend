@@ -19,6 +19,8 @@
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed:tracking": "tsx prisma/seed-order-tracking.ts",
+    "db:seed:galleries": "tsx prisma/seed-product-galleries.ts",
     "db:studio": "prisma studio",
     "prepare": "husky"
   },

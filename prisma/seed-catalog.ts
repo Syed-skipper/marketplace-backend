@@ -109,6 +109,42 @@ function randomPrice(min: number, max: number, seed: number) {
   return Math.round(min + ((seed * 7919) % range));
 }
 
+const GALLERY_VIEW_LABELS = ['Front', 'Side', 'Back', 'Detail'] as const;
+
+export async function backfillCatalogProductGalleries(prisma: PrismaClient) {
+  const products = await prisma.product.findMany({
+    where: { slug: { startsWith: 'catalog-' } },
+    include: { images: { orderBy: { sortOrder: 'asc' } } },
+  });
+
+  let updated = 0;
+
+  for (const product of products) {
+    if (product.images.length >= GALLERY_VIEW_LABELS.length) continue;
+
+    const baseUrl = product.images[0]?.imageUrl ?? '';
+    const hueMatch = baseUrl.match(/placehold\.co\/600x600\/([a-f0-9]+)\//i);
+    const hue = hueMatch?.[1] ?? 'cccccc';
+    const textMatch = baseUrl.match(/text=([^&]+)/);
+    const baseText = textMatch ? decodeURIComponent(textMatch[1].replace(/\+/g, ' ')) : 'Product';
+
+    for (let i = product.images.length; i < GALLERY_VIEW_LABELS.length; i++) {
+      await prisma.productImage.create({
+        data: {
+          productId: product.id,
+          imageUrl: `https://placehold.co/600x600/${hue}/fff?text=${encodeURIComponent(`${baseText} ${GALLERY_VIEW_LABELS[i]}`)}`,
+          sortOrder: i,
+        },
+      });
+    }
+
+    updated += 1;
+  }
+
+  console.log(`Gallery backfill: updated ${updated} catalog products with extra images.`);
+  return updated;
+}
+
 export async function seedBulkCatalogProducts(
   prisma: PrismaClient,
   sellerId: string,
@@ -153,10 +189,10 @@ export async function seedBulkCatalogProducts(
         avgRating,
         reviewCount,
         images: {
-          create: [{
-            imageUrl: `https://placehold.co/600x600/${config.imageHue}/fff?text=${encodeURIComponent(type)}`,
-            sortOrder: 0,
-          }],
+          create: GALLERY_VIEW_LABELS.map((label, i) => ({
+            imageUrl: `https://placehold.co/600x600/${config.imageHue}/fff?text=${encodeURIComponent(`${type} ${label}`)}`,
+            sortOrder: i,
+          })),
         },
         variants: {
           create: {
@@ -224,5 +260,6 @@ export async function seedBulkCatalogProducts(
   }
 
   console.log(`Catalog seed complete: ${created} products across ${CATEGORY_CONFIGS.length} categories.`);
+  await backfillCatalogProductGalleries(prisma);
   return { bulkCount: created, variantBySlug };
 }

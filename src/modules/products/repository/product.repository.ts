@@ -179,7 +179,13 @@ export class ProductRepository {
         variants: { include: { inventory: true } },
         category: true,
         seller: { select: { id: true, businessName: true, status: true } },
-        reviews: { take: 10, orderBy: { createdAt: 'desc' } },
+        reviews: {
+          take: 20,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            user: { select: { firstName: true, lastName: true } },
+          },
+        },
       },
     });
   }

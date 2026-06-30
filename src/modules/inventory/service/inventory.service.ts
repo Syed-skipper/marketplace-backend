@@ -91,16 +91,25 @@ export class InventoryService {
     return prisma.$transaction(async (tx) => {
       const inv = await tx.inventory.findUnique({ where: { variantId } });
       if (!inv) throw new NotFoundError('Inventory not found');
-      if (inv.reservedStock < quantity) {
+
+      const deductFromReserved = inv.reservedStock >= quantity;
+      const deductFromAvailable = !deductFromReserved && inv.availableStock >= quantity;
+
+      if (!deductFromReserved && !deductFromAvailable) {
         throw new DomainError('Insufficient reserved stock to deduct');
       }
 
       const updated = await tx.inventory.update({
         where: { variantId },
-        data: {
-          reservedStock: { decrement: quantity },
-          version: { increment: 1 },
-        },
+        data: deductFromReserved
+          ? {
+              reservedStock: { decrement: quantity },
+              version: { increment: 1 },
+            }
+          : {
+              availableStock: { decrement: quantity },
+              version: { increment: 1 },
+            },
       });
 
       await tx.inventoryTransaction.create({

@@ -2,6 +2,7 @@ import { prisma } from '../../../config/database/prisma.client';
 import { NotFoundError } from '../../../common/exceptions/errors';
 import { eventBus } from '../../../common/events/event-bus';
 import { DomainEventType } from '../../../common/events/domain-events';
+import { buildTrackingTimeline, formatShipmentStatus } from './tracking-timeline';
 
 export class ShippingService {
   async createShipment(orderId: string, carrier: string) {
@@ -47,9 +48,24 @@ export class ShippingService {
   async track(trackingNumber: string) {
     const shipment = await prisma.shipment.findFirst({
       where: { trackingNumber },
-      include: { order: { select: { orderNumber: true, status: true } } },
+      include: { order: { select: { id: true, orderNumber: true, status: true, createdAt: true } } },
     });
     if (!shipment) throw new NotFoundError('Shipment not found');
-    return shipment;
+
+    const { events, estimatedDelivery } = buildTrackingTimeline(shipment);
+
+    return {
+      id: shipment.id,
+      orderId: shipment.orderId,
+      trackingNumber: shipment.trackingNumber,
+      carrier: shipment.carrier,
+      status: shipment.status,
+      statusLabel: formatShipmentStatus(shipment.status),
+      createdAt: shipment.createdAt,
+      updatedAt: shipment.updatedAt,
+      estimatedDelivery,
+      events,
+      order: shipment.order,
+    };
   }
 }

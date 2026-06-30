@@ -69,6 +69,10 @@ export class OrderService {
       return created;
     });
 
+    for (const item of order.items) {
+      await this.inventory.reserveStock(item.variantId, item.quantity, order.id);
+    }
+
     await eventBus.publish({
       type: DomainEventType.ORDER_CREATED,
       payload: { orderId: order.id, userId },

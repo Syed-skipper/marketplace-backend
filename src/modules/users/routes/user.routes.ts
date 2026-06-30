@@ -4,7 +4,7 @@ import { asyncHandler } from '../../../common/utils/async-handler';
 import { sendSuccess } from '../../../common/utils/response.util';
 import { authenticate } from '../../../common/middlewares/auth.middleware';
 import { validate } from '../../../common/middlewares/validate.middleware';
-import { addressBodySchema, updateProfileSchema } from '../validator/user.validator';
+import { addressBodySchema, reverseGeocodeQuerySchema, updateProfileSchema } from '../validator/user.validator';
 
 const router = Router();
 const service = new UserService();
@@ -22,6 +22,15 @@ router.patch('/me', validate(updateProfileSchema), asyncHandler(async (req, res)
 router.get('/me/addresses', asyncHandler(async (req, res) => {
   sendSuccess(res, await service.listAddresses(req.user!.sub));
 }));
+
+router.get(
+  '/me/addresses/reverse-geocode',
+  validate(reverseGeocodeQuerySchema, 'query'),
+  asyncHandler(async (req, res) => {
+    const { lat, lng } = req.query as { lat: number; lng: number };
+    sendSuccess(res, await service.reverseGeocode(lat, lng));
+  }),
+);
 
 router.get('/me/addresses/:id', asyncHandler(async (req, res) => {
   sendSuccess(res, await service.getAddress(req.user!.sub, req.params.id));
